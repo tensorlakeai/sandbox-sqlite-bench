@@ -4,7 +4,26 @@ Benchmarks SQLite performance across four cloud sandbox providers: **Tensorlake*
 
 All sandboxes were configured with **2 vCPUs and ~4 GB RAM** to ensure a fair comparison.
 
-## Results (2 vCPU / 4 GB)
+## What It Benchmarks
+
+The benchmark script (`benchmark.py`) runs 10 SQLite operations with deterministic data (`random.seed(42)`):
+
+| Operation | Description |
+|---|---|
+| Sequential inserts (10k) | Single-row INSERTs in autocommit |
+| Batch inserts (50k) | `executemany` INSERT |
+| SELECT COUNT(*) | Full table count |
+| Range queries (1k) | `WHERE value BETWEEN ? AND ?` with index |
+| LIKE queries (500) | `WHERE name LIKE ?` (full scan) |
+| Updates (5k) | Single-row UPDATEs by name |
+| Deletes (2k) | Single-row DELETEs by name |
+| Transaction inserts (5k) | INSERTs within explicit BEGIN/COMMIT |
+| Aggregates | AVG, MIN, MAX, SUM + GROUP BY |
+| Join query | Two-table JOIN with WHERE filter |
+
+SQLite pragmas: WAL mode, synchronous=NORMAL, 64MB cache.
+
+## Results
 
 | Provider | Total Time | Relative | vCPUs | Memory |
 |---|---|---|---|---|
@@ -44,22 +63,11 @@ E2B         ████████████████                2.32
 | vCPUs (verified) | 2 | 2 | 2 | 2 |
 | Memory (verified) | 3.9 GB | 4.3 GB | 4.0 GB | 3.9 GB |
 
-## Quick Start
+## Running the Benchmarks
 
-```bash
-# Run all providers
-python run_benchmarks.py
+### Prerequisites
 
-# Run specific providers
-python run_benchmarks.py tensorlake vercel
-
-# Use a custom E2B template with specific CPU/memory
-python run_benchmarks.py e2b --e2b-template bench-2cpu-4gb
-```
-
-## Prerequisites
-
-### CLI Tools
+Install and authenticate each provider's CLI:
 
 | Provider | Install | Auth |
 |---|---|---|
@@ -68,50 +76,38 @@ python run_benchmarks.py e2b --e2b-template bench-2cpu-4gb
 | Daytona | `brew install daytonaio/cli/daytona` | `daytona login` |
 | E2B | `npm i -g e2b` | `e2b auth login` |
 
-### E2B Custom Template (for specific CPU/memory)
-
 E2B requires building a template to configure CPU and memory:
 
 ```bash
 mkdir /tmp/e2b-template
 echo 'FROM python:3.13-slim' > /tmp/e2b-template/Dockerfile
-
 cd /tmp/e2b-template
 e2b template create bench-2cpu-4gb \
   --dockerfile Dockerfile \
   --cpu-count 2 \
   --memory-mb 4096
+```
 
-# Then run with:
+### Usage
+
+```bash
+# Run all providers
+python run_benchmarks.py
+
+# Run specific providers
+python run_benchmarks.py tensorlake vercel
+
+# Use a custom E2B template
 python run_benchmarks.py e2b --e2b-template bench-2cpu-4gb
 ```
 
-## What It Benchmarks
-
-The benchmark script (`benchmark.py`) runs 10 SQLite operations with deterministic data (`random.seed(42)`):
-
-| Operation | Description |
-|---|---|
-| Sequential inserts (10k) | Single-row INSERTs in autocommit |
-| Batch inserts (50k) | `executemany` INSERT |
-| SELECT COUNT(*) | Full table count |
-| Range queries (1k) | `WHERE value BETWEEN ? AND ?` with index |
-| LIKE queries (500) | `WHERE name LIKE ?` (full scan) |
-| Updates (5k) | Single-row UPDATEs by name |
-| Deletes (2k) | Single-row DELETEs by name |
-| Transaction inserts (5k) | INSERTs within explicit BEGIN/COMMIT |
-| Aggregates | AVG, MIN, MAX, SUM + GROUP BY |
-| Join query | Two-table JOIN with WHERE filter |
-
-SQLite pragmas: WAL mode, synchronous=NORMAL, 64MB cache.
-
-## Provider Notes
+### Provider Notes
 
 - **Vercel**: Python runtime does not include the native `_sqlite3` C extension. The runner installs `pysqlite3-binary` automatically.
-- **Daytona**: Using `--class small` locks you to a snapshot with fixed 1 vCPU. To get custom resources, use `--cpu`/`--memory` with `-f Dockerfile` instead. The `exec` command strips quotes from arguments, so file transfer uses base64-encoded Python one-liners. `nproc` reports host CPUs (64), but cgroup enforces the requested limit.
+- **Daytona**: Using `--class small` locks you to a snapshot with fixed 1 vCPU. To get custom resources, use `--cpu`/`--memory` with `-f Dockerfile` instead. `nproc` reports host CPUs, but cgroup enforces the requested limit.
 - **E2B**: CPU and memory cannot be set at sandbox creation time. You must build a custom template with `e2b template create --cpu-count N --memory-mb N`.
 
-## Files
+### Files
 
 ```
 benchmark.py          # SQLite benchmark (runs inside sandboxes)
