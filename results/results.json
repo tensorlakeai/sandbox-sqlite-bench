@@ -53,27 +53,28 @@
   {
     "provider": "daytona",
     "specs": {
-      "requested_class": "small",
-      "actual_cpus": 1,
-      "actual_memory_mb": 773581,
-      "cgroup_cpu_limit": "100000/100000 (1 vCPU)",
-      "note": "Only 'small' runners available. medium/large returned 'No available runners'. 1 vCPU effective.",
-      "python_version": "3.14.2",
+      "requested_cpus": 2,
+      "requested_memory_gb": 4,
+      "actual_cpus": 2,
+      "actual_memory_mb": 4096,
+      "cgroup_cpu_limit": "200000/100000 (2 vCPUs)",
+      "note": "Created with --cpu 2 --memory 4 -f Dockerfile. nproc reports 64 (host) but cgroup enforces 2 vCPU.",
+      "python_version": "3.13.12",
       "sqlite_version": "3.46.1"
     },
     "results": {
-      "sequential_inserts_10k": 0.0659,
-      "batch_inserts_50k": 0.3601,
+      "sequential_inserts_10k": 0.068,
+      "batch_inserts_50k": 0.3558,
       "select_count": 0.0001,
-      "range_queries_1k": 0.1003,
-      "like_queries_500": 1.2,
+      "range_queries_1k": 0.0963,
+      "like_queries_500": 1.1723,
       "updates_5k": 0.0159,
       "deletes_2k": 0.0073,
-      "transaction_inserts_5k": 0.0465,
+      "transaction_inserts_5k": 0.0374,
       "aggregates": 0.0171,
-      "join_query": 0.0026,
+      "join_query": 0.0018,
       "db_size_mb": 8.37,
-      "total_time": 1.8158
+      "total_time": 1.772
     }
   },
   {

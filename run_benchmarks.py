@@ -127,13 +127,21 @@ def vercel_destroy(info):
 
 # --- Daytona ---
 
-def daytona_create(name="sqlite-bench", sandbox_class="small"):
-    print(f"  Creating Daytona sandbox (class={sandbox_class})...")
-    run(f"daytona create --name {name} --class {sandbox_class}")
+def daytona_create(name="sqlite-bench", cpus=2, memory_gb=4):
+    print(f"  Creating Daytona sandbox ({cpus} vCPU, {memory_gb} GB)...")
+    # Use -f with a Dockerfile to avoid snapshot restrictions on resource flags.
+    # When using --class or default snapshots, --cpu/--memory are rejected.
+    dockerfile = Path(__file__).parent / "Dockerfile.daytona"
+    if not dockerfile.exists():
+        dockerfile.write_text("FROM python:3.13-slim\n")
+    run(
+        f"daytona create --name {name} --cpu {cpus} --memory {memory_gb} "
+        f"-f {dockerfile}"
+    )
     return SandboxInfo(
         provider="daytona",
         sandbox_id=name,
-        specs={"requested_class": sandbox_class},
+        specs={"requested_cpus": cpus, "requested_memory_gb": memory_gb},
     )
 
 
