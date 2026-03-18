@@ -2,57 +2,145 @@
 
 Benchmarks SQLite performance across four sandbox providers: **Tensorlake**, **Vercel**, **Daytona**, and **E2B**.
 
-All sandboxes were configured with **2 vCPUs and ~4 GB RAM** to ensure a fair comparison.
+All sandboxes were configured with **2 vCPUs and ~4 GB RAM**. Each benchmark was run **3 times**, reporting mean +/- standard deviation.
 
 ## What It Benchmarks
 
-The benchmark script (`benchmark.py`) runs 10 SQLite operations with deterministic data (`random.seed(42)`):
+The benchmark script (`benchmark.py`) runs 11 SQLite operations with deterministic data (`random.seed(42)`) across three modes:
+
+| Mode | Description |
+|---|---|
+| **Default** | WAL mode, synchronous=NORMAL, 64MB cache, 60k rows (8.68 MB) |
+| **Fsync** | synchronous=FULL, DELETE journal mode, 25k rows (4.05 MB) |
+| **Large** | WAL mode, synchronous=NORMAL, 8MB cache, 250k rows (34.85 MB) |
 
 | Operation | Description |
 |---|---|
-| Sequential inserts (10k) | Single-row INSERTs in autocommit |
-| Batch inserts (50k) | `executemany` INSERT |
+| Sequential inserts | Single-row INSERTs in autocommit |
+| Batch inserts | `executemany` INSERT |
 | SELECT COUNT(*) | Full table count |
-| Range queries (1k) | `WHERE value BETWEEN ? AND ?` with index |
-| LIKE queries (500) | `WHERE name LIKE ?` (full scan) |
-| Updates (5k) | Single-row UPDATEs by name |
-| Deletes (2k) | Single-row DELETEs by name |
-| Transaction inserts (5k) | INSERTs within explicit BEGIN/COMMIT |
+| Range queries | `WHERE value BETWEEN ? AND ?` with index |
+| LIKE queries | `WHERE name LIKE ?` (full scan) |
+| Updates | Single-row UPDATEs by name |
+| Deletes | Single-row DELETEs by name |
+| Transaction inserts | INSERTs within explicit BEGIN/COMMIT |
 | Aggregates | AVG, MIN, MAX, SUM + GROUP BY |
 | Join query | Two-table JOIN with WHERE filter |
-
-SQLite pragmas: WAL mode, synchronous=NORMAL, 64MB cache.
+| Concurrent reads | 4 threads x 500 range queries each (tests multi-core) |
 
 ## Results
 
-| Provider | Total Time | Relative | vCPUs | Memory |
-|---|---|---|---|---|
-| **Tensorlake** | **1.30s** | 1.00x | 2 | 3.9 GB |
-| **Vercel** | **1.60s** | 1.23x | 2 | 4.3 GB |
-| **Daytona** | **1.77s** | 1.36x | 2 | 4.0 GB |
-| **E2B** | **2.32s** | 1.78x | 2 | 3.9 GB |
+### Default Mode (WAL, 60k rows, 8.68 MB)
+
+| Provider | Total Time | Concurrent Reads | Reads q/s |
+|---|---|---|---|
+| **Tensorlake** | **2.45s** +/- 0.04s | 1.17s | 1711 q/s |
+| **Vercel** | **3.00s** +/- 0.09s | 1.37s | 1465 q/s |
+| **E2B** | **3.92s** +/- 0.28s | 1.73s | 1175 q/s |
+| **Daytona** | **5.51s** +/- 0.18s | 3.90s | 511 q/s |
 
 ```
-Tensorlake  ██████████████████████████████  1.30s  (1.00x)
-Vercel      ████████████████████████        1.60s  (1.23x)
-Daytona     ██████████████████████          1.77s  (1.36x)
-E2B         ████████████████                2.32s  (1.78x)
+Tensorlake  ██████████████████████████████  2.45s
+Vercel      ████████████████████████        3.00s
+E2B         █████████████████████           3.92s
+Daytona     █████████████                   5.51s
 ```
 
-### Detailed Breakdown
+<details>
+<summary>Detailed breakdown (seconds)</summary>
 
 | Benchmark | Tensorlake | Vercel | Daytona | E2B |
 |---|---|---|---|---|
-| Sequential inserts (10k) | 0.0517s (193k/s) | 0.0627s (159k/s) | 0.0680s (147k/s) | 0.0871s (115k/s) |
-| Batch inserts (50k) | 0.2690s (186k/s) | 0.3044s (164k/s) | 0.3558s (141k/s) | 0.4861s (103k/s) |
-| SELECT COUNT(*) | 0.0001s | 0.0001s | 0.0001s | 0.0002s |
-| Range queries (1k) | 0.0917s (10.9k q/s) | 0.1168s (8.6k q/s) | 0.0963s (10.4k q/s) | 0.1551s (6.4k q/s) |
-| LIKE queries (500) | 0.8238s (607 q/s) | 1.0438s (479 q/s) | 1.1723s (427 q/s) | 1.4993s (333 q/s) |
-| Updates (5k) | 0.0138s (363k/s) | 0.0149s (336k/s) | 0.0159s (315k/s) | 0.0183s (274k/s) |
-| Deletes (2k) | 0.0063s (318k/s) | 0.0059s (342k/s) | 0.0073s (272k/s) | 0.0071s (282k/s) |
-| Transaction inserts (5k) | 0.0264s (189k/s) | 0.0338s (148k/s) | 0.0374s (134k/s) | 0.0381s (131k/s) |
-| Aggregates | 0.0166s | 0.0200s | 0.0171s | 0.0226s |
-| Join query | 0.0013s | 0.0020s | 0.0018s | 0.0027s |
+| Sequential inserts | 0.0498 | 0.0635 | 0.0577 | 0.0808 |
+| Batch inserts | 0.2514 | 0.3115 | 0.2957 | 0.3868 |
+| SELECT COUNT(*) | 0.0001 | 0.0001 | 0.0001 | 0.0001 |
+| Range queries | 0.1018 | 0.1286 | 0.0946 | 0.1615 |
+| LIKE queries | 0.8154 | 1.0524 | 1.0858 | 1.4749 |
+| Updates | 0.0123 | 0.0153 | 0.0147 | 0.0184 |
+| Deletes | 0.0050 | 0.0060 | 0.0068 | 0.0071 |
+| Transaction inserts | 0.0246 | 0.0337 | 0.0385 | 0.0381 |
+| Aggregates | 0.0147 | 0.0207 | 0.0159 | 0.0222 |
+| Join query | 0.0014 | 0.0021 | 0.0017 | 0.0027 |
+| Concurrent reads | 1.1711 | 1.3680 | 3.8962 | 1.7317 |
+
+</details>
+
+### Fsync Mode (synchronous=FULL, DELETE journal, 25k rows, 4.05 MB)
+
+| Provider | Total Time | Concurrent Reads | Reads q/s |
+|---|---|---|---|
+| **Tensorlake** | **1.64s** +/- 0.20s | 1.31s | 1558 q/s |
+| **Vercel** | **2.05s** +/- 0.11s | 1.61s | 1242 q/s |
+| **E2B** | **2.17s** +/- 0.66s | 1.58s | 1175 q/s |
+| **Daytona** | **4.75s** +/- 0.90s | 4.33s | 475 q/s |
+
+```
+Tensorlake  ██████████████████████████████  1.64s
+Vercel      ██████████████████████████      2.05s
+E2B         █████████████████████████       2.17s
+Daytona     ██████████                      4.75s
+```
+
+<details>
+<summary>Detailed breakdown (seconds)</summary>
+
+| Benchmark | Tensorlake | Vercel | Daytona | E2B |
+|---|---|---|---|---|
+| Sequential inserts | 0.0244 | 0.0323 | 0.0407 | 0.0410 |
+| Batch inserts | 0.0901 | 0.1180 | 0.1118 | 0.1502 |
+| SELECT COUNT(*) | 0.0000 | 0.0001 | 0.0001 | 0.0001 |
+| Range queries | 0.0472 | 0.0604 | 0.0451 | 0.0896 |
+| LIKE queries | 0.1353 | 0.1739 | 0.1757 | 0.2437 |
+| Updates | 0.0047 | 0.0080 | 0.0089 | 0.0075 |
+| Deletes | 0.0023 | 0.0055 | 0.0075 | 0.0044 |
+| Transaction inserts | 0.0215 | 0.0294 | 0.0272 | 0.0390 |
+| Aggregates | 0.0065 | 0.0092 | 0.0069 | 0.0101 |
+| Join query | 0.0014 | 0.0019 | 0.0017 | 0.0025 |
+| Concurrent reads | 1.3054 | 1.6145 | 4.3252 | 1.5774 |
+
+</details>
+
+### Large Mode (WAL, 250k rows, 34.85 MB, 8MB cache)
+
+| Provider | Total Time | Concurrent Reads | Reads q/s |
+|---|---|---|---|
+| **Tensorlake** | **9.45s** +/- 0.10s | 1.20s | 1681 q/s |
+| **Vercel** | **11.97s** +/- 0.05s | 1.20s | 1666 q/s |
+| **E2B** | **15.69s** +/- 0.63s | 1.63s | 1273 q/s |
+| **Daytona** | **16.69s** +/- 0.88s | 4.05s | 509 q/s |
+
+```
+Tensorlake  ██████████████████████████████  9.45s
+Vercel      ███████████████████████         11.97s
+E2B         ██████████████████              15.69s
+Daytona     █████████████████               16.69s
+```
+
+<details>
+<summary>Detailed breakdown (seconds)</summary>
+
+| Benchmark | Tensorlake | Vercel | Daytona | E2B |
+|---|---|---|---|---|
+| Sequential inserts | 0.2608 | 0.3523 | 0.3175 | 0.4267 |
+| Batch inserts | 1.0235 | 1.2737 | 1.2111 | 1.6318 |
+| SELECT COUNT(*) | 0.0001 | 0.0004 | 0.0003 | 0.0004 |
+| Range queries | 0.3102 | 0.4084 | 0.4263 | 0.4842 |
+| LIKE queries | 6.4741 | 8.4868 | 10.4028 | 11.2522 |
+| Updates | 0.0368 | 0.0466 | 0.0579 | 0.0458 |
+| Deletes | 0.0243 | 0.0403 | 0.0657 | 0.0310 |
+| Transaction inserts | 0.0491 | 0.0687 | 0.0733 | 0.0829 |
+| Aggregates | 0.0747 | 0.0835 | 0.0777 | 0.1036 |
+| Join query | 0.0020 | 0.0033 | 0.0032 | 0.0038 |
+| Concurrent reads | 1.1965 | 1.2016 | 4.0498 | 1.6261 |
+
+</details>
+
+### Key Observations
+
+- **Tensorlake wins all three modes**, consistently fastest across every dataset size and configuration.
+- **Vercel is a solid second place** overall, with tight competition from E2B in fsync mode.
+- **Daytona concurrent reads are 3-4x slower** than every other provider across all modes. This is the single biggest performance differentiator -- Daytona's single-threaded operations are competitive, but multi-threaded reads expose a bottleneck.
+- LIKE queries (full table scans) dominate total time in all modes, especially at the large scale where they account for 60-70% of runtime.
 
 ### Environment
 
@@ -60,8 +148,8 @@ E2B         ████████████████                2.32
 |---|---|---|---|---|
 | Python | 3.12.3 | 3.13.1 | 3.13.12 | 3.13.12 |
 | SQLite | 3.45.1 | 3.51.1 | 3.46.1 | 3.46.1 |
-| vCPUs (verified) | 2 | 2 | 2 | 2 |
-| Memory (verified) | 3.9 GB | 4.3 GB | 4.0 GB | 3.9 GB |
+| vCPUs (verified) | 2 | 2 | 2 (cgroup) | 2 |
+| Memory (verified) | 3.9 GB | 4.3 GB | 4.0 GB (cgroup) | 3.9 GB |
 
 ## Running the Benchmarks
 
@@ -91,7 +179,7 @@ e2b template create bench-2cpu-4gb \
 ### Usage
 
 ```bash
-# Run all providers
+# Run all providers, all modes (default + fsync + large)
 python run_benchmarks.py
 
 # Run specific providers

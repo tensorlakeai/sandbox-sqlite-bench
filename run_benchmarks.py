@@ -4,22 +4,18 @@ Run SQLite benchmarks across cloud sandbox providers.
 
 Supports: Tensorlake, Vercel, Daytona, E2B
 
-Prerequisites:
-  - CLIs installed: tensorlake (via /tmp/venv), sandbox (Vercel), daytona, e2b
-  - Authenticated with each provider
-  - For E2B with custom specs: build a template first (see README)
-
 Usage:
-  python run_benchmarks.py                    # run all providers
-  python run_benchmarks.py tensorlake vercel  # run specific providers
-  python run_benchmarks.py --specs            # show sandbox specs without benchmarking
+  python run_benchmarks.py                                    # all providers, default mode, 3 iterations
+  python run_benchmarks.py tensorlake vercel                  # specific providers
+  python run_benchmarks.py --mode fsync                       # disk I/O stress test
+  python run_benchmarks.py --mode large                       # large dataset exceeding cache
+  python run_benchmarks.py --iterations 5                     # 5 iterations per provider
+  python run_benchmarks.py e2b --e2b-template bench-2cpu-4gb  # custom E2B template
 """
 import argparse
 import json
-import os
 import re
 import subprocess
-import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,13 +32,12 @@ class SandboxInfo:
 
 
 # ---------------------------------------------------------------------------
-# Provider helpers
+# Shell helpers
 # ---------------------------------------------------------------------------
 
-def run(cmd, timeout=300, check=True, shell=True):
-    """Run a shell command and return stdout."""
+def run(cmd, timeout=600, check=True):
     result = subprocess.run(
-        cmd, shell=shell, capture_output=True, text=True, timeout=timeout
+        cmd, shell=True, capture_output=True, text=True, timeout=timeout
     )
     if check and result.returncode != 0:
         raise RuntimeError(
@@ -52,12 +47,15 @@ def run(cmd, timeout=300, check=True, shell=True):
 
 
 def run_unchecked(cmd, timeout=300):
-    """Run a shell command, return (returncode, stdout, stderr)."""
     result = subprocess.run(
         cmd, shell=True, capture_output=True, text=True, timeout=timeout
     )
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 
+
+# ---------------------------------------------------------------------------
+# Provider helpers
+# ---------------------------------------------------------------------------
 
 # --- Tensorlake ---
 
@@ -85,25 +83,24 @@ def tensorlake_copy(info, local_path, remote_path):
 def tensorlake_exec(info, cmd):
     return run(
         f"source /tmp/venv/bin/activate && "
-        f"tensorlake sbx exec {info.sandbox_id} -- {cmd}"
+        f"tensorlake sbx exec {info.sandbox_id} -- {cmd}",
+        timeout=600,
     )
 
 
 def tensorlake_destroy(info):
-    # Tensorlake auto-terminates; no explicit destroy needed
-    pass
+    pass  # auto-terminates
 
 
 # --- Vercel ---
 
 def vercel_create(timeout="30m"):
-    print(f"  Creating Vercel sandbox (python3.13, default 2 vCPU / 4 GB)...")
+    print("  Creating Vercel sandbox (python3.13, default 2 vCPU / 4 GB)...")
     out = run(f"sandbox create --runtime python3.13 --timeout {timeout}")
     match = re.search(r"(sbx_\S+)", out)
     if not match:
         raise RuntimeError(f"Could not parse Vercel sandbox ID from: {out}")
     sandbox_id = match.group(1)
-    # Install pysqlite3 since Vercel's Python runtime lacks _sqlite3
     print("  Installing pysqlite3-binary on Vercel sandbox...")
     run(f"sandbox exec {sandbox_id} -- pip install pysqlite3-binary", timeout=120)
     return SandboxInfo(
@@ -118,7 +115,7 @@ def vercel_copy(info, local_path, remote_path):
 
 
 def vercel_exec(info, cmd):
-    return run(f"sandbox exec {info.sandbox_id} -- {cmd}")
+    return run(f"sandbox exec {info.sandbox_id} -- {cmd}", timeout=600)
 
 
 def vercel_destroy(info):
@@ -129,8 +126,6 @@ def vercel_destroy(info):
 
 def daytona_create(name="sqlite-bench", cpus=2, memory_gb=4):
     print(f"  Creating Daytona sandbox ({cpus} vCPU, {memory_gb} GB)...")
-    # Use -f with a Dockerfile to avoid snapshot restrictions on resource flags.
-    # When using --class or default snapshots, --cpu/--memory are rejected.
     dockerfile = Path(__file__).parent / "Dockerfile.daytona"
     if not dockerfile.exists():
         dockerfile.write_text("FROM python:3.13-slim\n")
@@ -146,9 +141,7 @@ def daytona_create(name="sqlite-bench", cpus=2, memory_gb=4):
 
 
 def daytona_copy(info, local_path, remote_path):
-    """Copy file to Daytona via base64-encoded python one-liner."""
     import base64
-
     with open(local_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
     run(
@@ -160,7 +153,7 @@ def daytona_copy(info, local_path, remote_path):
 
 
 def daytona_exec(info, cmd):
-    return run(f"daytona exec {info.sandbox_id} -- '{cmd}'")
+    return run(f"daytona exec {info.sandbox_id} -- '{cmd}'", timeout=600)
 
 
 def daytona_destroy(info):
@@ -184,9 +177,7 @@ def e2b_create(template="base"):
 
 
 def e2b_copy(info, local_path, remote_path):
-    """Copy file to E2B via base64-encoded python one-liner."""
     import base64
-
     with open(local_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
     run(
@@ -198,7 +189,7 @@ def e2b_copy(info, local_path, remote_path):
 
 
 def e2b_exec(info, cmd):
-    return run(f'e2b sandbox exec {info.sandbox_id} "{cmd}"')
+    return run(f'e2b sandbox exec {info.sandbox_id} "{cmd}"', timeout=600)
 
 
 def e2b_destroy(info):
@@ -242,7 +233,6 @@ PROVIDERS = {
 # ---------------------------------------------------------------------------
 
 def detect_specs(info, exec_fn):
-    """Detect actual vCPU count and memory inside the sandbox."""
     try:
         nproc = exec_fn(info, "nproc").strip().split("\n")[-1]
         info.specs["actual_cpus"] = int(nproc)
@@ -250,8 +240,15 @@ def detect_specs(info, exec_fn):
         info.specs["actual_cpus"] = "unknown"
 
     try:
+        cgroup = exec_fn(info, "cat /sys/fs/cgroup/cpu.max").strip().split("\n")[-1]
+        parts = cgroup.split()
+        if len(parts) == 2 and parts[0] != "max":
+            info.specs["cgroup_cpus"] = round(int(parts[0]) / int(parts[1]), 1)
+    except Exception:
+        pass
+
+    try:
         meminfo = exec_fn(info, "grep MemTotal /proc/meminfo")
-        # Parse "MemTotal:       4034568 kB"
         for line in meminfo.split("\n"):
             if "MemTotal" in line:
                 kb = int(re.search(r"(\d+)", line).group(1))
@@ -271,8 +268,7 @@ def detect_specs(info, exec_fn):
 # Main benchmark runner
 # ---------------------------------------------------------------------------
 
-def run_benchmark(provider_name, provider_fns, e2b_template="base"):
-    """Create sandbox, copy benchmark, run it, collect results, destroy."""
+def run_benchmark(provider_name, provider_fns, mode, iterations, e2b_template="base"):
     print(f"\n{'='*60}")
     print(f"  {provider_name.upper()}")
     print(f"{'='*60}")
@@ -282,31 +278,31 @@ def run_benchmark(provider_name, provider_fns, e2b_template="base"):
     exec_fn = provider_fns["exec"]
     destroy_fn = provider_fns["destroy"]
 
-    # Create
+    # Measure sandbox creation time
+    create_start = time.time()
     if provider_name == "e2b":
         info = create_fn(template=e2b_template)
     else:
         info = create_fn()
+    create_time = round(time.time() - create_start, 2)
     print(f"  Sandbox ID: {info.sandbox_id}")
+    print(f"  Creation time: {create_time}s")
 
     try:
-        # Detect specs
         print("  Detecting specs...")
         detect_specs(info, exec_fn)
         print(f"  Specs: {json.dumps(info.specs, indent=4)}")
 
-        # Copy benchmark script
         print("  Copying benchmark script...")
         copy_fn(info, str(BENCHMARK_SCRIPT), "/tmp/sqlite_benchmark.py")
 
-        # Run benchmark
-        print("  Running benchmark...")
+        bench_cmd = f"python3 /tmp/sqlite_benchmark.py --mode {mode} --iterations {iterations}"
+        print(f"  Running: {bench_cmd}")
         start = time.time()
-        output = exec_fn(info, "python3 /tmp/sqlite_benchmark.py")
+        output = exec_fn(info, bench_cmd)
         wall_time = time.time() - start
         print(output)
 
-        # Parse JSON results from output
         json_match = re.search(r"--- JSON ---\s*\n(.+)", output, re.DOTALL)
         if json_match:
             bench_results = json.loads(json_match.group(1))
@@ -317,9 +313,11 @@ def run_benchmark(provider_name, provider_fns, e2b_template="base"):
             "provider": provider_name,
             "sandbox_id": info.sandbox_id,
             "specs": info.specs,
+            "sandbox_creation_time": create_time,
+            "mode": mode,
+            "iterations": iterations,
             "results": bench_results,
             "wall_time": round(wall_time, 2),
-            "raw_output": output,
         }
 
     except Exception as e:
@@ -328,6 +326,7 @@ def run_benchmark(provider_name, provider_fns, e2b_template="base"):
             "provider": provider_name,
             "sandbox_id": info.sandbox_id,
             "specs": info.specs,
+            "sandbox_creation_time": create_time,
             "results": {"error": str(e)},
         }
 
@@ -339,36 +338,48 @@ def run_benchmark(provider_name, provider_fns, e2b_template="base"):
             pass
 
 
+def get_result_value(results, key):
+    """Extract a numeric value from results, handling both single-run and multi-iteration formats."""
+    val = results.get(key)
+    if val is None:
+        return None
+    if isinstance(val, dict):
+        return val.get("mean")
+    if isinstance(val, (int, float)):
+        return val
+    return None
+
+
 def print_comparison(all_results):
-    """Print a comparison table of results."""
     print(f"\n{'='*80}")
     print("  COMPARISON")
     print(f"{'='*80}\n")
 
-    # Specs table
+    # Specs
     print("Resource Configuration:")
-    print(f"  {'Provider':<15} {'vCPUs':>8} {'Memory (MB)':>12} {'Python':>12}")
-    print(f"  {'-'*15} {'-'*8} {'-'*12} {'-'*12}")
+    print(f"  {'Provider':<15} {'vCPUs':>8} {'Memory (MB)':>12} {'Python':>12} {'Create (s)':>12}")
+    print(f"  {'-'*15} {'-'*8} {'-'*12} {'-'*12} {'-'*12}")
     for r in all_results:
-        cpus = r["specs"].get("actual_cpus", "?")
+        cpus = r["specs"].get("cgroup_cpus", r["specs"].get("actual_cpus", "?"))
         mem = r["specs"].get("actual_memory_mb", "?")
         pyver = r["specs"].get("python_version", "?")
-        print(f"  {r['provider']:<15} {str(cpus):>8} {str(mem):>12} {pyver:>12}")
+        create_t = r.get("sandbox_creation_time", "?")
+        print(f"  {r['provider']:<15} {str(cpus):>8} {str(mem):>12} {pyver:>12} {str(create_t):>12}")
 
     print()
 
-    # Results table
     benchmarks = [
-        "sequential_inserts_10k",
-        "batch_inserts_50k",
+        "sequential_inserts",
+        "batch_inserts",
         "select_count",
-        "range_queries_1k",
-        "like_queries_500",
-        "updates_5k",
-        "deletes_2k",
-        "transaction_inserts_5k",
+        "range_queries",
+        "like_queries",
+        "updates",
+        "deletes",
+        "transaction_inserts",
         "aggregates",
         "join_query",
+        "concurrent_reads_wall",
         "total_time",
     ]
 
@@ -381,23 +392,23 @@ def print_comparison(all_results):
     for bench in benchmarks:
         row = f"  {bench:<28}"
         for r in all_results:
-            val = r["results"].get(bench, "n/a")
-            if isinstance(val, (int, float)):
+            val = get_result_value(r["results"], bench)
+            if val is not None:
                 row += f" {val:>13.4f}s"
             else:
-                row += f" {str(val):>14}"
+                row += f" {'n/a':>14}"
         print(row)
 
     # Ranking
     ranked = sorted(
-        [r for r in all_results if "total_time" in r["results"]],
-        key=lambda r: r["results"]["total_time"],
+        [r for r in all_results if get_result_value(r["results"], "total_time") is not None],
+        key=lambda r: get_result_value(r["results"], "total_time"),
     )
     if ranked:
         print(f"\nRanking (fastest to slowest):")
-        baseline = ranked[0]["results"]["total_time"]
+        baseline = get_result_value(ranked[0]["results"], "total_time")
         for i, r in enumerate(ranked, 1):
-            t = r["results"]["total_time"]
+            t = get_result_value(r["results"], "total_time")
             ratio = t / baseline
             bar = "#" * int(30 * baseline / t)
             print(f"  {i}. {r['provider']:<14} {t:.4f}s  ({ratio:.2f}x)  {bar}")
@@ -415,14 +426,26 @@ def main():
         help="Providers to benchmark (default: all)",
     )
     parser.add_argument(
+        "--mode",
+        choices=["default", "fsync", "large"],
+        default="default",
+        help="Benchmark mode (default: default)",
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=3,
+        help="Iterations per provider for mean/stddev (default: 3)",
+    )
+    parser.add_argument(
         "--e2b-template",
         default="base",
-        help="E2B template to use (default: base). Build a custom one for specific CPU/memory.",
+        help="E2B template (default: base). Build custom for specific CPU/memory.",
     )
     parser.add_argument(
         "--output",
         default=None,
-        help="Output JSON file path (default: results/<timestamp>.json)",
+        help="Output JSON file (default: results/<mode>_<timestamp>.json)",
     )
     args = parser.parse_args()
 
@@ -436,25 +459,19 @@ def main():
         result = run_benchmark(
             provider_name,
             PROVIDERS[provider_name],
+            mode=args.mode,
+            iterations=args.iterations,
             e2b_template=args.e2b_template,
         )
         all_results.append(result)
 
-    # Print comparison
     print_comparison(all_results)
 
-    # Save results
     output_path = args.output or str(
-        RESULTS_DIR / f"{time.strftime('%Y%m%d_%H%M%S')}.json"
+        RESULTS_DIR / f"{args.mode}_{time.strftime('%Y%m%d_%H%M%S')}.json"
     )
-    # Strip raw_output for the saved file
-    save_results = []
-    for r in all_results:
-        save_r = {k: v for k, v in r.items() if k != "raw_output"}
-        save_results.append(save_r)
-
     with open(output_path, "w") as f:
-        json.dump(save_results, f, indent=2)
+        json.dump(all_results, f, indent=2)
     print(f"\nResults saved to {output_path}")
 
 

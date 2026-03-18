@@ -3,14 +3,27 @@
 
 Runs a suite of SQLite operations and outputs results as JSON.
 Designed to produce deterministic, reproducible results across providers.
+
+Usage:
+  python benchmark.py                          # default: WAL mode, small dataset
+  python benchmark.py --mode fsync             # synchronous=FULL to stress disk I/O
+  python benchmark.py --mode large             # 100MB+ dataset that exceeds cache
+  python benchmark.py --iterations 3           # run 3 times, report mean/stddev
+  python benchmark.py --mode fsync --iterations 5
 """
-import sqlite3
+import argparse
+try:
+    import sqlite3
+except ImportError:
+    import pysqlite3 as sqlite3
+import statistics
 import time
 import os
 import json
 import random
 import string
 import sys
+import threading
 
 DB_PATH = "/tmp/bench.db"
 
@@ -19,9 +32,10 @@ def random_string(length=50):
     return "".join(random.choices(string.ascii_letters + string.digits, k=length))
 
 
-def bench_create_table(conn):
+def bench_create_table(conn, large=False):
     c = conn.cursor()
     c.execute("DROP TABLE IF EXISTS bench")
+    c.execute("DROP TABLE IF EXISTS bench2")
     c.execute(
         """
         CREATE TABLE bench (
@@ -38,7 +52,11 @@ def bench_create_table(conn):
     conn.commit()
 
 
-def bench_sequential_inserts(conn, n=10000):
+# ---------------------------------------------------------------------------
+# Individual benchmarks — each returns elapsed seconds
+# ---------------------------------------------------------------------------
+
+def bench_sequential_inserts(conn, n):
     c = conn.cursor()
     start = time.perf_counter()
     for i in range(n):
@@ -50,7 +68,7 @@ def bench_sequential_inserts(conn, n=10000):
     return time.perf_counter() - start
 
 
-def bench_batch_inserts(conn, n=50000):
+def bench_batch_inserts(conn, n):
     c = conn.cursor()
     start = time.perf_counter()
     data = [
@@ -63,7 +81,7 @@ def bench_batch_inserts(conn, n=50000):
     return time.perf_counter() - start
 
 
-def bench_select_all(conn):
+def bench_select_count(conn):
     c = conn.cursor()
     start = time.perf_counter()
     rows = c.execute("SELECT COUNT(*) FROM bench").fetchone()
@@ -71,7 +89,7 @@ def bench_select_all(conn):
     return elapsed, rows[0]
 
 
-def bench_select_range(conn, iterations=1000):
+def bench_select_range(conn, iterations):
     c = conn.cursor()
     start = time.perf_counter()
     for _ in range(iterations):
@@ -84,7 +102,7 @@ def bench_select_range(conn, iterations=1000):
     return time.perf_counter() - start
 
 
-def bench_select_like(conn, iterations=500):
+def bench_select_like(conn, iterations):
     c = conn.cursor()
     start = time.perf_counter()
     for i in range(iterations):
@@ -95,7 +113,7 @@ def bench_select_like(conn, iterations=500):
     return time.perf_counter() - start
 
 
-def bench_update(conn, n=5000):
+def bench_update(conn, n):
     c = conn.cursor()
     start = time.perf_counter()
     for i in range(n):
@@ -107,7 +125,7 @@ def bench_update(conn, n=5000):
     return time.perf_counter() - start
 
 
-def bench_delete(conn, n=2000):
+def bench_delete(conn, n):
     c = conn.cursor()
     start = time.perf_counter()
     for i in range(n):
@@ -116,7 +134,7 @@ def bench_delete(conn, n=2000):
     return time.perf_counter() - start
 
 
-def bench_transaction(conn, n=5000):
+def bench_transaction(conn, n):
     c = conn.cursor()
     start = time.perf_counter()
     c.execute("BEGIN")
@@ -168,84 +186,263 @@ def bench_join(conn):
     return time.perf_counter() - start
 
 
+def bench_concurrent_reads(db_path, num_threads=4, queries_per_thread=500):
+    """Spawn multiple threads doing read queries concurrently."""
+    timings = []
+    errors = []
+
+    def reader(thread_id):
+        conn = sqlite3.connect(db_path)
+        conn.execute("PRAGMA journal_mode=WAL")
+        c = conn.cursor()
+        rng = random.Random(thread_id)
+        t0 = time.perf_counter()
+        for _ in range(queries_per_thread):
+            low = rng.random() * 500
+            c.execute(
+                "SELECT * FROM bench WHERE value BETWEEN ? AND ? LIMIT 100",
+                (low, low + 100),
+            )
+            c.fetchall()
+        elapsed = time.perf_counter() - t0
+        timings.append(elapsed)
+        conn.close()
+
+    threads = []
+    wall_start = time.perf_counter()
+    for tid in range(num_threads):
+        t = threading.Thread(target=reader, args=(tid,))
+        threads.append(t)
+        t.start()
+    for t in threads:
+        t.join()
+    wall_time = time.perf_counter() - wall_start
+
+    total_queries = num_threads * queries_per_thread
+    return wall_time, total_queries
+
+
+# ---------------------------------------------------------------------------
+# Mode configs — scale factors for each mode
+# ---------------------------------------------------------------------------
+
+MODES = {
+    "default": {
+        "label": "Default (WAL, small dataset)",
+        "journal_mode": "WAL",
+        "synchronous": "NORMAL",
+        "cache_size_kb": 64000,
+        "seq_inserts": 10000,
+        "batch_inserts": 50000,
+        "range_queries": 1000,
+        "like_queries": 500,
+        "updates": 5000,
+        "deletes": 2000,
+        "tx_inserts": 5000,
+    },
+    "fsync": {
+        "label": "Fsync stress (synchronous=FULL, no WAL)",
+        "journal_mode": "DELETE",
+        "synchronous": "FULL",
+        "cache_size_kb": 64000,
+        "seq_inserts": 5000,
+        "batch_inserts": 20000,
+        "range_queries": 500,
+        "like_queries": 200,
+        "updates": 2000,
+        "deletes": 1000,
+        "tx_inserts": 5000,
+    },
+    "large": {
+        "label": "Large dataset (WAL, exceeds cache)",
+        "journal_mode": "WAL",
+        "synchronous": "NORMAL",
+        "cache_size_kb": 8000,  # 8MB cache to force spills
+        "seq_inserts": 50000,
+        "batch_inserts": 200000,
+        "range_queries": 2000,
+        "like_queries": 1000,
+        "updates": 10000,
+        "deletes": 5000,
+        "tx_inserts": 10000,
+    },
+}
+
+
 def get_db_size():
     if os.path.exists(DB_PATH):
-        return os.path.getsize(DB_PATH) / (1024 * 1024)
+        size = os.path.getsize(DB_PATH)
+        wal = DB_PATH + "-wal"
+        if os.path.exists(wal):
+            size += os.path.getsize(wal)
+        return size / (1024 * 1024)
     return 0
 
 
-def main():
+def run_single(mode_cfg):
+    """Run one full benchmark pass. Returns dict of results."""
     random.seed(42)
     if os.path.exists(DB_PATH):
         os.remove(DB_PATH)
+    for suffix in ("-wal", "-shm"):
+        p = DB_PATH + suffix
+        if os.path.exists(p):
+            os.remove(p)
 
     conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA cache_size=-64000")  # 64MB cache
-
-    print(f"SQLite version: {sqlite3.sqlite_version}")
-    print(f"Python version: {sys.version}")
-    print(f"Database path: {DB_PATH}")
-    print("-" * 60)
+    conn.execute(f"PRAGMA journal_mode={mode_cfg['journal_mode']}")
+    conn.execute(f"PRAGMA synchronous={mode_cfg['synchronous']}")
+    conn.execute(f"PRAGMA cache_size=-{mode_cfg['cache_size_kb']}")
 
     results = {}
 
     bench_create_table(conn)
 
-    t = bench_sequential_inserts(conn, 10000)
-    results["sequential_inserts_10k"] = round(t, 4)
-    print(f"Sequential inserts (10k):      {t:.4f}s  ({10000/t:.0f} rows/s)")
+    n = mode_cfg["seq_inserts"]
+    t = bench_sequential_inserts(conn, n)
+    results["sequential_inserts"] = round(t, 4)
 
-    t = bench_batch_inserts(conn, 50000)
-    results["batch_inserts_50k"] = round(t, 4)
-    print(f"Batch inserts (50k):           {t:.4f}s  ({50000/t:.0f} rows/s)")
+    n = mode_cfg["batch_inserts"]
+    t = bench_batch_inserts(conn, n)
+    results["batch_inserts"] = round(t, 4)
 
-    t, count = bench_select_all(conn)
+    t, count = bench_select_count(conn)
     results["select_count"] = round(t, 4)
-    print(f"SELECT COUNT(*) ({count} rows): {t:.4f}s")
+    results["row_count"] = count
 
-    t = bench_select_range(conn, 1000)
-    results["range_queries_1k"] = round(t, 4)
-    print(f"Range queries (1k):            {t:.4f}s  ({1000/t:.0f} queries/s)")
+    n = mode_cfg["range_queries"]
+    t = bench_select_range(conn, n)
+    results["range_queries"] = round(t, 4)
 
-    t = bench_select_like(conn, 500)
-    results["like_queries_500"] = round(t, 4)
-    print(f"LIKE queries (500):            {t:.4f}s  ({500/t:.0f} queries/s)")
+    n = mode_cfg["like_queries"]
+    t = bench_select_like(conn, n)
+    results["like_queries"] = round(t, 4)
 
-    t = bench_update(conn, 5000)
-    results["updates_5k"] = round(t, 4)
-    print(f"Updates (5k):                  {t:.4f}s  ({5000/t:.0f} rows/s)")
+    n = mode_cfg["updates"]
+    t = bench_update(conn, n)
+    results["updates"] = round(t, 4)
 
-    t = bench_delete(conn, 2000)
-    results["deletes_2k"] = round(t, 4)
-    print(f"Deletes (2k):                  {t:.4f}s  ({2000/t:.0f} rows/s)")
+    n = mode_cfg["deletes"]
+    t = bench_delete(conn, n)
+    results["deletes"] = round(t, 4)
 
-    t = bench_transaction(conn, 5000)
-    results["transaction_inserts_5k"] = round(t, 4)
-    print(f"Transaction inserts (5k):      {t:.4f}s  ({5000/t:.0f} rows/s)")
+    n = mode_cfg["tx_inserts"]
+    t = bench_transaction(conn, n)
+    results["transaction_inserts"] = round(t, 4)
 
     t = bench_aggregate(conn)
     results["aggregates"] = round(t, 4)
-    print(f"Aggregates:                    {t:.4f}s")
 
     t = bench_join(conn)
     results["join_query"] = round(t, 4)
-    print(f"Join query:                    {t:.4f}s")
 
-    db_size = get_db_size()
-    results["db_size_mb"] = round(db_size, 2)
-    print(f"\nDatabase size: {db_size:.2f} MB")
+    # Concurrent reads (uses its own connections)
+    conn.close()
+    wall, total_q = bench_concurrent_reads(DB_PATH, num_threads=4, queries_per_thread=500)
+    results["concurrent_reads_wall"] = round(wall, 4)
+    results["concurrent_reads_total_queries"] = total_q
 
-    total = sum(v for k, v in results.items() if k != "db_size_mb")
+    results["db_size_mb"] = round(get_db_size(), 2)
+
+    total = sum(
+        v for k, v in results.items()
+        if k not in ("db_size_mb", "row_count", "concurrent_reads_total_queries")
+    )
     results["total_time"] = round(total, 4)
-    print(f"Total benchmark time: {total:.4f}s")
+
+    # Cleanup
+    os.remove(DB_PATH)
+    for suffix in ("-wal", "-shm"):
+        p = DB_PATH + suffix
+        if os.path.exists(p):
+            os.remove(p)
+
+    return results
+
+
+def main():
+    parser = argparse.ArgumentParser(description="SQLite sandbox benchmark")
+    parser.add_argument(
+        "--mode",
+        choices=list(MODES.keys()),
+        default="default",
+        help="Benchmark mode (default: default)",
+    )
+    parser.add_argument(
+        "--iterations",
+        type=int,
+        default=1,
+        help="Number of iterations to run (default: 1). Reports mean/stddev when > 1.",
+    )
+    args = parser.parse_args()
+
+    mode_cfg = MODES[args.mode]
+
+    print(f"SQLite version: {sqlite3.sqlite_version}")
+    print(f"Python version: {sys.version}")
+    print(f"Mode: {mode_cfg['label']}")
+    print(f"Iterations: {args.iterations}")
+    print(f"Journal: {mode_cfg['journal_mode']}, Sync: {mode_cfg['synchronous']}, Cache: {mode_cfg['cache_size_kb']}KB")
+    print("-" * 60)
+
+    all_runs = []
+    for i in range(args.iterations):
+        if args.iterations > 1:
+            print(f"\n--- Iteration {i+1}/{args.iterations} ---")
+        run_results = run_single(mode_cfg)
+        all_runs.append(run_results)
+
+        # Print this iteration
+        cfg = mode_cfg
+        print(f"  Sequential inserts ({cfg['seq_inserts']}):  {run_results['sequential_inserts']:.4f}s")
+        print(f"  Batch inserts ({cfg['batch_inserts']}):     {run_results['batch_inserts']:.4f}s")
+        print(f"  SELECT COUNT(*) ({run_results['row_count']} rows): {run_results['select_count']:.4f}s")
+        print(f"  Range queries ({cfg['range_queries']}):     {run_results['range_queries']:.4f}s")
+        print(f"  LIKE queries ({cfg['like_queries']}):       {run_results['like_queries']:.4f}s")
+        print(f"  Updates ({cfg['updates']}):                 {run_results['updates']:.4f}s")
+        print(f"  Deletes ({cfg['deletes']}):                 {run_results['deletes']:.4f}s")
+        print(f"  Transaction inserts ({cfg['tx_inserts']}):  {run_results['transaction_inserts']:.4f}s")
+        print(f"  Aggregates:                    {run_results['aggregates']:.4f}s")
+        print(f"  Join query:                    {run_results['join_query']:.4f}s")
+        qps = run_results['concurrent_reads_total_queries'] / run_results['concurrent_reads_wall']
+        print(f"  Concurrent reads (4 threads):  {run_results['concurrent_reads_wall']:.4f}s ({qps:.0f} q/s)")
+        print(f"  DB size: {run_results['db_size_mb']:.2f} MB")
+        print(f"  Total: {run_results['total_time']:.4f}s")
+
+    # Build summary
+    if args.iterations == 1:
+        summary = all_runs[0]
+    else:
+        print(f"\n{'='*60}")
+        print(f"  SUMMARY ({args.iterations} iterations)")
+        print(f"{'='*60}")
+        summary = {"iterations": args.iterations}
+        numeric_keys = [
+            k for k in all_runs[0]
+            if isinstance(all_runs[0][k], (int, float))
+            and k not in ("row_count", "concurrent_reads_total_queries")
+        ]
+        for key in numeric_keys:
+            values = [r[key] for r in all_runs]
+            mean = statistics.mean(values)
+            summary[key] = {
+                "mean": round(mean, 4),
+                "stddev": round(statistics.stdev(values), 4) if len(values) > 1 else 0,
+                "min": round(min(values), 4),
+                "max": round(max(values), 4),
+            }
+            if key == "total_time":
+                print(f"  Total: {mean:.4f}s +/- {summary[key]['stddev']:.4f}s")
+        summary["row_count"] = all_runs[0]["row_count"]
+        summary["all_runs"] = all_runs
+
+    summary["mode"] = args.mode
+    summary["mode_label"] = mode_cfg["label"]
+    summary["sqlite_version"] = sqlite3.sqlite_version
+    summary["python_version"] = sys.version.split()[0]
 
     print("\n--- JSON ---")
-    print(json.dumps(results, indent=2))
-
-    conn.close()
-    os.remove(DB_PATH)
+    print(json.dumps(summary, indent=2))
 
 
 if __name__ == "__main__":

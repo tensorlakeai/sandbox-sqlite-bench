@@ -1,106 +1,275 @@
-[
-  {
-    "provider": "tensorlake",
-    "specs": {
-      "requested_cpus": 2,
-      "requested_memory_mb": 4096,
-      "actual_cpus": 2,
-      "actual_memory_mb": 3940,
+{
+  "benchmark_date": "2026-03-17",
+  "config": {
+    "iterations": 3,
+    "vcpus": 2,
+    "memory_gb": 4
+  },
+  "providers": {
+    "tensorlake": {
+      "vcpus": 2,
+      "memory_mb": 3940,
       "python_version": "3.12.3",
       "sqlite_version": "3.45.1"
     },
-    "results": {
-      "sequential_inserts_10k": 0.0517,
-      "batch_inserts_50k": 0.269,
-      "select_count": 0.0001,
-      "range_queries_1k": 0.0917,
-      "like_queries_500": 0.8238,
-      "updates_5k": 0.0138,
-      "deletes_2k": 0.0063,
-      "transaction_inserts_5k": 0.0264,
-      "aggregates": 0.0166,
-      "join_query": 0.0013,
-      "db_size_mb": 8.37,
-      "total_time": 1.3007
-    }
-  },
-  {
-    "provider": "vercel",
-    "specs": {
-      "requested_cpus": 2,
-      "requested_memory_mb": 4096,
-      "actual_cpus": 2,
-      "actual_memory_mb": 4287,
+    "vercel": {
+      "vcpus": 2,
+      "memory_mb": 4287,
       "python_version": "3.13.1",
       "sqlite_version": "3.51.1",
-      "note": "pysqlite3-binary installed (native _sqlite3 missing)"
+      "notes": "pysqlite3-binary"
     },
-    "results": {
-      "sequential_inserts_10k": 0.0627,
-      "batch_inserts_50k": 0.3044,
-      "select_count": 0.0001,
-      "range_queries_1k": 0.1168,
-      "like_queries_500": 1.0438,
-      "updates_5k": 0.0149,
-      "deletes_2k": 0.0059,
-      "transaction_inserts_5k": 0.0338,
-      "aggregates": 0.02,
-      "join_query": 0.002,
-      "db_size_mb": 8.37,
-      "total_time": 1.6044
-    }
-  },
-  {
-    "provider": "daytona",
-    "specs": {
-      "requested_cpus": 2,
-      "requested_memory_gb": 4,
-      "actual_cpus": 2,
-      "actual_memory_mb": 4096,
-      "cgroup_cpu_limit": "200000/100000 (2 vCPUs)",
-      "note": "Created with --cpu 2 --memory 4 -f Dockerfile. nproc reports 64 (host) but cgroup enforces 2 vCPU.",
+    "daytona": {
+      "vcpus": 2,
+      "memory_mb": 4096,
+      "python_version": "3.13.12",
+      "sqlite_version": "3.46.1",
+      "notes": "cgroup-enforced CPU and memory"
+    },
+    "e2b": {
+      "vcpus": 2,
+      "memory_mb": 3940,
       "python_version": "3.13.12",
       "sqlite_version": "3.46.1"
-    },
-    "results": {
-      "sequential_inserts_10k": 0.068,
-      "batch_inserts_50k": 0.3558,
-      "select_count": 0.0001,
-      "range_queries_1k": 0.0963,
-      "like_queries_500": 1.1723,
-      "updates_5k": 0.0159,
-      "deletes_2k": 0.0073,
-      "transaction_inserts_5k": 0.0374,
-      "aggregates": 0.0171,
-      "join_query": 0.0018,
-      "db_size_mb": 8.37,
-      "total_time": 1.772
     }
   },
-  {
-    "provider": "e2b",
-    "specs": {
-      "template": "bench-2cpu-4gb",
-      "requested_cpus": 2,
-      "requested_memory_mb": 4096,
-      "actual_cpus": 2,
-      "actual_memory_mb": 3940,
-      "python_version": "3.13.12",
-      "sqlite_version": "3.46.1"
+  "results": {
+    "default": {
+      "description": "WAL mode, synchronous=NORMAL, 64MB cache, 60k rows, 8.68 MB",
+      "tensorlake": {
+        "total_mean": 2.45,
+        "total_stddev": 0.04,
+        "concurrent_reads_mean": 1.17,
+        "concurrent_reads_qps": 1711,
+        "benchmarks": {
+          "seq_inserts": 0.0498,
+          "batch_inserts": 0.2514,
+          "select_count": 0.0001,
+          "range_queries": 0.1018,
+          "like_queries": 0.8154,
+          "updates": 0.0123,
+          "deletes": 0.0050,
+          "tx_inserts": 0.0246,
+          "aggregates": 0.0147,
+          "join_query": 0.0014,
+          "concurrent_reads": 1.1711
+        }
+      },
+      "vercel": {
+        "total_mean": 3.00,
+        "total_stddev": 0.09,
+        "concurrent_reads_mean": 1.37,
+        "concurrent_reads_qps": 1465,
+        "benchmarks": {
+          "seq_inserts": 0.0635,
+          "batch_inserts": 0.3115,
+          "select_count": 0.0001,
+          "range_queries": 0.1286,
+          "like_queries": 1.0524,
+          "updates": 0.0153,
+          "deletes": 0.0060,
+          "tx_inserts": 0.0337,
+          "aggregates": 0.0207,
+          "join_query": 0.0021,
+          "concurrent_reads": 1.3680
+        }
+      },
+      "daytona": {
+        "total_mean": 5.51,
+        "total_stddev": 0.18,
+        "concurrent_reads_mean": 3.90,
+        "concurrent_reads_qps": 511,
+        "benchmarks": {
+          "seq_inserts": 0.0577,
+          "batch_inserts": 0.2957,
+          "select_count": 0.0001,
+          "range_queries": 0.0946,
+          "like_queries": 1.0858,
+          "updates": 0.0147,
+          "deletes": 0.0068,
+          "tx_inserts": 0.0385,
+          "aggregates": 0.0159,
+          "join_query": 0.0017,
+          "concurrent_reads": 3.8962
+        }
+      },
+      "e2b": {
+        "total_mean": 3.92,
+        "total_stddev": 0.28,
+        "concurrent_reads_mean": 1.73,
+        "concurrent_reads_qps": 1175,
+        "benchmarks": {
+          "seq_inserts": 0.0808,
+          "batch_inserts": 0.3868,
+          "select_count": 0.0001,
+          "range_queries": 0.1615,
+          "like_queries": 1.4749,
+          "updates": 0.0184,
+          "deletes": 0.0071,
+          "tx_inserts": 0.0381,
+          "aggregates": 0.0222,
+          "join_query": 0.0027,
+          "concurrent_reads": 1.7317
+        }
+      }
     },
-    "results": {
-      "sequential_inserts_10k": 0.0871,
-      "batch_inserts_50k": 0.4861,
-      "select_count": 0.0002,
-      "range_queries_1k": 0.1551,
-      "like_queries_500": 1.4993,
-      "updates_5k": 0.0183,
-      "deletes_2k": 0.0071,
-      "transaction_inserts_5k": 0.0381,
-      "aggregates": 0.0226,
-      "join_query": 0.0027,
-      "db_size_mb": 8.37,
-      "total_time": 2.3166
+    "fsync": {
+      "description": "synchronous=FULL, DELETE journal mode, 25k rows, 4.05 MB",
+      "tensorlake": {
+        "total_mean": 1.64,
+        "total_stddev": 0.20,
+        "concurrent_reads_mean": 1.31,
+        "concurrent_reads_qps": 1558,
+        "benchmarks": {
+          "seq_inserts": 0.0244,
+          "batch_inserts": 0.0901,
+          "select_count": 0.0000,
+          "range_queries": 0.0472,
+          "like_queries": 0.1353,
+          "updates": 0.0047,
+          "deletes": 0.0023,
+          "tx_inserts": 0.0215,
+          "aggregates": 0.0065,
+          "join_query": 0.0014,
+          "concurrent_reads": 1.3054
+        }
+      },
+      "vercel": {
+        "total_mean": 2.05,
+        "total_stddev": 0.11,
+        "concurrent_reads_mean": 1.61,
+        "concurrent_reads_qps": 1242,
+        "benchmarks": {
+          "seq_inserts": 0.0323,
+          "batch_inserts": 0.1180,
+          "select_count": 0.0001,
+          "range_queries": 0.0604,
+          "like_queries": 0.1739,
+          "updates": 0.0080,
+          "deletes": 0.0055,
+          "tx_inserts": 0.0294,
+          "aggregates": 0.0092,
+          "join_query": 0.0019,
+          "concurrent_reads": 1.6145
+        }
+      },
+      "daytona": {
+        "total_mean": 4.75,
+        "total_stddev": 0.90,
+        "concurrent_reads_mean": 4.33,
+        "concurrent_reads_qps": 475,
+        "benchmarks": {
+          "seq_inserts": 0.0407,
+          "batch_inserts": 0.1118,
+          "select_count": 0.0001,
+          "range_queries": 0.0451,
+          "like_queries": 0.1757,
+          "updates": 0.0089,
+          "deletes": 0.0075,
+          "tx_inserts": 0.0272,
+          "aggregates": 0.0069,
+          "join_query": 0.0017,
+          "concurrent_reads": 4.3252
+        }
+      },
+      "e2b": {
+        "total_mean": 2.17,
+        "total_stddev": 0.66,
+        "concurrent_reads_mean": 1.58,
+        "concurrent_reads_qps": 1175,
+        "benchmarks": {
+          "seq_inserts": 0.0410,
+          "batch_inserts": 0.1502,
+          "select_count": 0.0001,
+          "range_queries": 0.0896,
+          "like_queries": 0.2437,
+          "updates": 0.0075,
+          "deletes": 0.0044,
+          "tx_inserts": 0.0390,
+          "aggregates": 0.0101,
+          "join_query": 0.0025,
+          "concurrent_reads": 1.5774
+        }
+      }
+    },
+    "large": {
+      "description": "WAL mode, synchronous=NORMAL, 8MB cache, 250k rows, 34.85 MB",
+      "tensorlake": {
+        "total_mean": 9.45,
+        "total_stddev": 0.10,
+        "concurrent_reads_mean": 1.20,
+        "concurrent_reads_qps": 1681,
+        "benchmarks": {
+          "seq_inserts": 0.2608,
+          "batch_inserts": 1.0235,
+          "select_count": 0.0001,
+          "range_queries": 0.3102,
+          "like_queries": 6.4741,
+          "updates": 0.0368,
+          "deletes": 0.0243,
+          "tx_inserts": 0.0491,
+          "aggregates": 0.0747,
+          "join_query": 0.0020,
+          "concurrent_reads": 1.1965
+        }
+      },
+      "vercel": {
+        "total_mean": 11.97,
+        "total_stddev": 0.05,
+        "concurrent_reads_mean": 1.20,
+        "concurrent_reads_qps": 1666,
+        "benchmarks": {
+          "seq_inserts": 0.3523,
+          "batch_inserts": 1.2737,
+          "select_count": 0.0004,
+          "range_queries": 0.4084,
+          "like_queries": 8.4868,
+          "updates": 0.0466,
+          "deletes": 0.0403,
+          "tx_inserts": 0.0687,
+          "aggregates": 0.0835,
+          "join_query": 0.0033,
+          "concurrent_reads": 1.2016
+        }
+      },
+      "daytona": {
+        "total_mean": 16.69,
+        "total_stddev": 0.88,
+        "concurrent_reads_mean": 4.05,
+        "concurrent_reads_qps": 509,
+        "benchmarks": {
+          "seq_inserts": 0.3175,
+          "batch_inserts": 1.2111,
+          "select_count": 0.0003,
+          "range_queries": 0.4263,
+          "like_queries": 10.4028,
+          "updates": 0.0579,
+          "deletes": 0.0657,
+          "tx_inserts": 0.0733,
+          "aggregates": 0.0777,
+          "join_query": 0.0032,
+          "concurrent_reads": 4.0498
+        }
+      },
+      "e2b": {
+        "total_mean": 15.69,
+        "total_stddev": 0.63,
+        "concurrent_reads_mean": 1.63,
+        "concurrent_reads_qps": 1273,
+        "benchmarks": {
+          "seq_inserts": 0.4267,
+          "batch_inserts": 1.6318,
+          "select_count": 0.0004,
+          "range_queries": 0.4842,
+          "like_queries": 11.2522,
+          "updates": 0.0458,
+          "deletes": 0.0310,
+          "tx_inserts": 0.0829,
+          "aggregates": 0.1036,
+          "join_query": 0.0038,
+          "concurrent_reads": 1.6261
+        }
+      }
     }
   }
-]
+}
