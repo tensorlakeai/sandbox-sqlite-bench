@@ -1,6 +1,6 @@
-# SQLite Benchmark: Cloud Sandbox Providers
+# Sandbox File System I/O Benchmarks
 
-Benchmarks SQLite performance across four cloud sandbox providers: **Tensorlake**, **Vercel**, **Daytona**, and **E2B**.
+Benchmarks SQLite performance across four sandbox providers: **Tensorlake**, **Vercel**, **Daytona**, and **E2B**.
 
 All sandboxes were configured with **2 vCPUs and ~4 GB RAM** to ensure a fair comparison.
 
