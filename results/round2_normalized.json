@@ -1,0 +1,105 @@
+[
+  {
+    "provider": "tensorlake",
+    "specs": {
+      "requested_cpus": 2,
+      "requested_memory_mb": 4096,
+      "actual_cpus": 2,
+      "actual_memory_mb": 3940,
+      "python_version": "3.12.3",
+      "sqlite_version": "3.45.1"
+    },
+    "results": {
+      "sequential_inserts_10k": 0.0517,
+      "batch_inserts_50k": 0.269,
+      "select_count": 0.0001,
+      "range_queries_1k": 0.0917,
+      "like_queries_500": 0.8238,
+      "updates_5k": 0.0138,
+      "deletes_2k": 0.0063,
+      "transaction_inserts_5k": 0.0264,
+      "aggregates": 0.0166,
+      "join_query": 0.0013,
+      "db_size_mb": 8.37,
+      "total_time": 1.3007
+    }
+  },
+  {
+    "provider": "vercel",
+    "specs": {
+      "requested_cpus": 2,
+      "requested_memory_mb": 4096,
+      "actual_cpus": 2,
+      "actual_memory_mb": 4287,
+      "python_version": "3.13.1",
+      "sqlite_version": "3.51.1",
+      "note": "pysqlite3-binary installed (native _sqlite3 missing)"
+    },
+    "results": {
+      "sequential_inserts_10k": 0.0627,
+      "batch_inserts_50k": 0.3044,
+      "select_count": 0.0001,
+      "range_queries_1k": 0.1168,
+      "like_queries_500": 1.0438,
+      "updates_5k": 0.0149,
+      "deletes_2k": 0.0059,
+      "transaction_inserts_5k": 0.0338,
+      "aggregates": 0.02,
+      "join_query": 0.002,
+      "db_size_mb": 8.37,
+      "total_time": 1.6044
+    }
+  },
+  {
+    "provider": "daytona",
+    "specs": {
+      "requested_class": "small",
+      "actual_cpus": 1,
+      "actual_memory_mb": 773581,
+      "cgroup_cpu_limit": "100000/100000 (1 vCPU)",
+      "note": "Only 'small' runners available. medium/large returned 'No available runners'. 1 vCPU effective.",
+      "python_version": "3.14.2",
+      "sqlite_version": "3.46.1"
+    },
+    "results": {
+      "sequential_inserts_10k": 0.0659,
+      "batch_inserts_50k": 0.3601,
+      "select_count": 0.0001,
+      "range_queries_1k": 0.1003,
+      "like_queries_500": 1.2,
+      "updates_5k": 0.0159,
+      "deletes_2k": 0.0073,
+      "transaction_inserts_5k": 0.0465,
+      "aggregates": 0.0171,
+      "join_query": 0.0026,
+      "db_size_mb": 8.37,
+      "total_time": 1.8158
+    }
+  },
+  {
+    "provider": "e2b",
+    "specs": {
+      "template": "bench-2cpu-4gb",
+      "requested_cpus": 2,
+      "requested_memory_mb": 4096,
+      "actual_cpus": 2,
+      "actual_memory_mb": 3940,
+      "python_version": "3.13.12",
+      "sqlite_version": "3.46.1"
+    },
+    "results": {
+      "sequential_inserts_10k": 0.0871,
+      "batch_inserts_50k": 0.4861,
+      "select_count": 0.0002,
+      "range_queries_1k": 0.1551,
+      "like_queries_500": 1.4993,
+      "updates_5k": 0.0183,
+      "deletes_2k": 0.0071,
+      "transaction_inserts_5k": 0.0381,
+      "aggregates": 0.0226,
+      "join_query": 0.0027,
+      "db_size_mb": 8.37,
+      "total_time": 2.3166
+    }
+  }
+]
