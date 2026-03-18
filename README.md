@@ -4,6 +4,8 @@ Benchmarks SQLite performance across four sandbox providers: **Tensorlake**, **V
 
 All sandboxes were configured with **2 vCPUs and ~4 GB RAM**. Each benchmark was run **3 times**, reporting mean +/- standard deviation.
 
+![SQLite Benchmark Results](benchmark_chart.png)
+
 ## What It Benchmarks
 
 The benchmark script (`benchmark.py`) runs 11 SQLite operations with deterministic data (`random.seed(42)`) across three modes:
