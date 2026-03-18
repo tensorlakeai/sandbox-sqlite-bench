@@ -31,6 +31,13 @@
       "memory_mb": 3940,
       "python_version": "3.13.12",
       "sqlite_version": "3.46.1"
+    },
+    "modal": {
+      "vcpus": 2,
+      "memory_mb": "~1TB (host)",
+      "python_version": "3.13.3",
+      "sqlite_version": "3.40.1",
+      "notes": "Python SDK, sandboxes via modal.Sandbox.create()"
     }
   },
   "results": {
@@ -111,6 +118,25 @@
           "join_query": 0.0027,
           "concurrent_reads": 1.7317
         }
+      },
+      "modal": {
+        "total_mean": 4.66,
+        "total_stddev": 0.19,
+        "concurrent_reads_mean": 2.31,
+        "concurrent_reads_qps": 869,
+        "benchmarks": {
+          "seq_inserts": 0.0913,
+          "batch_inserts": 0.4756,
+          "select_count": 0.0001,
+          "range_queries": 0.1473,
+          "like_queries": 1.5034,
+          "updates": 0.0263,
+          "deletes": 0.0157,
+          "tx_inserts": 0.0577,
+          "aggregates": 0.0229,
+          "join_query": 0.0021,
+          "concurrent_reads": 2.3127
+        }
       }
     },
     "fsync": {
@@ -190,6 +216,25 @@
           "join_query": 0.0025,
           "concurrent_reads": 1.5774
         }
+      },
+      "modal": {
+        "total_mean": 2.43,
+        "total_stddev": 0.11,
+        "concurrent_reads_mean": 1.79,
+        "concurrent_reads_qps": 1120,
+        "benchmarks": {
+          "seq_inserts": 0.0465,
+          "batch_inserts": 0.1709,
+          "select_count": 0.0002,
+          "range_queries": 0.0832,
+          "like_queries": 0.2543,
+          "updates": 0.0138,
+          "deletes": 0.0116,
+          "tx_inserts": 0.0435,
+          "aggregates": 0.0102,
+          "join_query": 0.0026,
+          "concurrent_reads": 1.7909
+        }
       }
     },
     "large": {
@@ -268,6 +313,25 @@
           "aggregates": 0.1036,
           "join_query": 0.0038,
           "concurrent_reads": 1.6261
+        }
+      },
+      "modal": {
+        "total_mean": 63.55,
+        "total_stddev": 0.36,
+        "concurrent_reads_mean": 19.72,
+        "concurrent_reads_qps": 101,
+        "benchmarks": {
+          "seq_inserts": 0.6368,
+          "batch_inserts": 2.8765,
+          "select_count": 0.0007,
+          "range_queries": 1.5284,
+          "like_queries": 38.0541,
+          "updates": 0.1492,
+          "deletes": 0.1553,
+          "tx_inserts": 0.1661,
+          "aggregates": 0.2524,
+          "join_query": 0.0107,
+          "concurrent_reads": 19.7180
         }
       }
     }
