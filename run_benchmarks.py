@@ -2,7 +2,7 @@
 """
 Run SQLite benchmarks across cloud sandbox providers.
 
-Supports: Tensorlake, Vercel, Daytona, E2B
+Supports: Tensorlake, Vercel, Daytona, E2B, Leap0
 
 Usage:
   python run_benchmarks.py                                    # all providers, default mode, 3 iterations
@@ -11,6 +11,8 @@ Usage:
   python run_benchmarks.py --mode large                       # large dataset exceeding cache
   python run_benchmarks.py --iterations 5                     # 5 iterations per provider
   python run_benchmarks.py e2b --e2b-template bench-2cpu-4gb  # custom E2B template
+  python run_benchmarks.py leap0                              # Leap0 only
+  python run_benchmarks.py leap0 --leap0-template my-template  # custom Leap0 template
 """
 import argparse
 import json
@@ -196,6 +198,47 @@ def e2b_destroy(info):
     run_unchecked(f"e2b sandbox kill {info.sandbox_id}")
 
 
+# --- Leap0 ---
+
+def leap0_create(template=None):
+    print("  Creating Leap0 sandbox...")
+    from leap0 import Leap0Client
+    _client = Leap0Client()
+    kwargs = {}
+    if template:
+        kwargs["template_name"] = template
+    sandbox = _client.sandboxes.create(**kwargs)
+    info = SandboxInfo(
+        provider="leap0",
+        sandbox_id=sandbox.id,
+        specs={},
+    )
+    info._leap0_client = _client
+    info._leap0_sandbox = sandbox
+    return info
+
+
+def leap0_copy(info, local_path, remote_path):
+    sandbox = info._leap0_sandbox
+    sandbox.filesystem.write_file(path=remote_path, content=open(local_path).read())
+
+
+def leap0_exec(info, cmd):
+    sandbox = info._leap0_sandbox
+    result = sandbox.process.execute(command=cmd, timeout=600)
+    if result.exit_code != 0:
+        raise RuntimeError(f"Command failed (exit {result.exit_code}): {cmd}\n{result.stderr}")
+    return result.stdout
+
+
+def leap0_destroy(info):
+    try:
+        info._leap0_sandbox.delete()
+        info._leap0_client.close()
+    except Exception:
+        pass
+
+
 # ---------------------------------------------------------------------------
 # Provider registry
 # ---------------------------------------------------------------------------
@@ -224,6 +267,12 @@ PROVIDERS = {
         "copy": e2b_copy,
         "exec": e2b_exec,
         "destroy": e2b_destroy,
+    },
+    "leap0": {
+        "create": leap0_create,
+        "copy": leap0_copy,
+        "exec": leap0_exec,
+        "destroy": leap0_destroy,
     },
 }
 
@@ -268,7 +317,7 @@ def detect_specs(info, exec_fn):
 # Main benchmark runner
 # ---------------------------------------------------------------------------
 
-def run_benchmark(provider_name, provider_fns, mode, iterations, e2b_template="base"):
+def run_benchmark(provider_name, provider_fns, mode, iterations, e2b_template="base", leap0_template=None):
     print(f"\n{'='*60}")
     print(f"  {provider_name.upper()}")
     print(f"{'='*60}")
@@ -282,6 +331,8 @@ def run_benchmark(provider_name, provider_fns, mode, iterations, e2b_template="b
     create_start = time.time()
     if provider_name == "e2b":
         info = create_fn(template=e2b_template)
+    elif provider_name == "leap0":
+        info = create_fn(template=leap0_template)
     else:
         info = create_fn()
     create_time = round(time.time() - create_start, 2)
@@ -443,6 +494,11 @@ def main():
         help="E2B template (default: base). Build custom for specific CPU/memory.",
     )
     parser.add_argument(
+        "--leap0-template",
+        default=None,
+        help="Leap0 template name (default: None, uses default template).",
+    )
+    parser.add_argument(
         "--output",
         default=None,
         help="Output JSON file (default: results/<mode>_<timestamp>.json)",
@@ -462,6 +518,7 @@ def main():
             mode=args.mode,
             iterations=args.iterations,
             e2b_template=args.e2b_template,
+            leap0_template=args.leap0_template,
         )
         all_results.append(result)
 
