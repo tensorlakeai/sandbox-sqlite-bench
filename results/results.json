@@ -38,6 +38,15 @@
       "python_version": "3.13.3",
       "sqlite_version": "3.40.1",
       "notes": "Python SDK, sandboxes via modal.Sandbox.create()"
+    },
+    "tenki": {
+      "vcpus": 2,
+      "memory_mb": 3888,
+      "python_version": "3.12.3",
+      "sqlite_version": "3.45.1",
+      "benchmark_date": "2026-10-01",
+      "region": "US",
+      "notes": "tenki CLI v2.4.2"
     }
   },
   "results": {
@@ -137,6 +146,25 @@
           "join_query": 0.0021,
           "concurrent_reads": 2.3127
         }
+      },
+      "tenki": {
+        "total_mean": 3.63,
+        "total_stddev": 0.28,
+        "concurrent_reads_mean": 1.43,
+        "concurrent_reads_qps": 1403,
+        "benchmarks": {
+          "seq_inserts": 0.0823,
+          "batch_inserts": 0.4989,
+          "select_count": 0.0001,
+          "range_queries": 0.1231,
+          "like_queries": 1.2710,
+          "updates": 0.0199,
+          "deletes": 0.0067,
+          "tx_inserts": 0.1673,
+          "aggregates": 0.0379,
+          "join_query": 0.0017,
+          "concurrent_reads": 1.4260
+        }
       }
     },
     "fsync": {
@@ -235,6 +263,25 @@
           "join_query": 0.0026,
           "concurrent_reads": 1.7909
         }
+      },
+      "tenki": {
+        "total_mean": 2.24,
+        "total_stddev": 0.08,
+        "concurrent_reads_mean": 1.51,
+        "concurrent_reads_qps": 1322,
+        "benchmarks": {
+          "seq_inserts": 0.0622,
+          "batch_inserts": 0.1871,
+          "select_count": 0.0001,
+          "range_queries": 0.0585,
+          "like_queries": 0.2034,
+          "updates": 0.0413,
+          "deletes": 0.0697,
+          "tx_inserts": 0.0898,
+          "aggregates": 0.0132,
+          "join_query": 0.0025,
+          "concurrent_reads": 1.5127
+        }
       }
     },
     "large": {
@@ -332,6 +379,25 @@
           "aggregates": 0.2524,
           "join_query": 0.0107,
           "concurrent_reads": 19.7180
+        }
+      },
+      "tenki": {
+        "total_mean": 15.77,
+        "total_stddev": 0.10,
+        "concurrent_reads_mean": 1.98,
+        "concurrent_reads_qps": 1010,
+        "benchmarks": {
+          "seq_inserts": 0.4937,
+          "batch_inserts": 1.7415,
+          "select_count": 0.0005,
+          "range_queries": 0.4135,
+          "like_queries": 9.8935,
+          "updates": 0.3161,
+          "deletes": 0.4839,
+          "tx_inserts": 0.3195,
+          "aggregates": 0.1274,
+          "join_query": 0.0029,
+          "concurrent_reads": 1.9811
         }
       }
     }
