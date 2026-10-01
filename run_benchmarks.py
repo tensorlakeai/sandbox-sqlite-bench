@@ -2,7 +2,7 @@
 """
 Run SQLite benchmarks across cloud sandbox providers.
 
-Supports: Tensorlake, Vercel, Daytona, E2B
+Supports: Tensorlake, Vercel, Daytona, E2B, Tenki
 
 Usage:
   python run_benchmarks.py                                    # all providers, default mode, 3 iterations
@@ -14,7 +14,9 @@ Usage:
 """
 import argparse
 import json
+import os
 import re
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -196,6 +198,50 @@ def e2b_destroy(info):
     run_unchecked(f"e2b sandbox kill {info.sandbox_id}")
 
 
+# --- Tenki ---
+
+def tenki_create(cpus=2, memory=4096, disk_gb=5):
+    print(f"  Creating Tenki sandbox ({cpus} vCPU, {memory} MB)...")
+    out = run(
+        f"tenki sandbox create --cpu {cpus} --memory-mb {memory} "
+        f"--disk-size-gb {disk_gb} --max-duration 30m --output json"
+    )
+    sandbox_id = json.loads(out).get("id")
+    if not sandbox_id:
+        raise RuntimeError(f"Could not parse Tenki sandbox ID from: {out}")
+    return SandboxInfo(
+        provider="tenki",
+        sandbox_id=sandbox_id,
+        specs={"requested_cpus": cpus, "requested_memory_mb": memory},
+    )
+
+
+def tenki_copy(info, local_path, remote_path):
+    # `write` only accepts paths inside the workdir (/home/tenki), so stage
+    # there then copy to the requested destination (e.g. /tmp).
+    staged = "/home/tenki/" + os.path.basename(remote_path)
+    run(
+        f"tenki sandbox write --session {info.sandbox_id} "
+        f"--path {staged} --data-file {local_path}"
+    )
+    if staged != remote_path:
+        tenki_exec(info, f"cp {staged} {remote_path}")
+
+
+def tenki_exec(info, cmd):
+    out = run(
+        f"tenki sandbox exec --session {info.sandbox_id} --output json "
+        f"-c {shlex.quote(cmd)}",
+        timeout=600,
+    )
+    return json.loads(out).get("stdout", "").strip()
+
+
+def tenki_destroy(info):
+    if info.sandbox_id:
+        run_unchecked(f"tenki sandbox terminate {info.sandbox_id}")
+
+
 # ---------------------------------------------------------------------------
 # Provider registry
 # ---------------------------------------------------------------------------
@@ -224,6 +270,12 @@ PROVIDERS = {
         "copy": e2b_copy,
         "exec": e2b_exec,
         "destroy": e2b_destroy,
+    },
+    "tenki": {
+        "create": tenki_create,
+        "copy": tenki_copy,
+        "exec": tenki_exec,
+        "destroy": tenki_destroy,
     },
 }
 
