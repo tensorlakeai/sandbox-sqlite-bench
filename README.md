@@ -164,14 +164,24 @@ Modal       ████                            63.55s
 
 ### Prerequisites
 
-Install and authenticate each provider's CLI:
+For the Node provider CLIs, use Node.js 22+ and pnpm 11.28.5. Install the
+locked tools and add their executables to this shell's PATH:
+
+```bash
+npm install --global --ignore-scripts pnpm@11.28.5
+pnpm --dir tools install --frozen-lockfile --ignore-scripts
+export PATH="$PWD/tools/node_modules/.bin:$PATH"
+```
+
+The tools use a strict 24-hour registry release delay, required timestamps and
+disabled install hooks. Then authenticate each provider's CLI:
 
 | Provider | Install | Auth |
 |---|---|---|
 | Tensorlake | `pip install tensorlake` (into `/tmp/venv`) | `tensorlake login` |
-| Vercel | `npm i -g sandbox` | `sandbox login` |
+| Vercel | Locked `tools/` project above | `sandbox login` |
 | Daytona | `brew install daytonaio/cli/daytona` | `daytona login` |
-| E2B | `npm i -g e2b` | `e2b auth login` |
+| E2B | Locked `@e2b/cli` in `tools/` above | `e2b auth login` |
 | Modal | `pip install modal` | `modal token set` |
 
 E2B requires building a template to configure CPU and memory:
